@@ -193,27 +193,69 @@ ${archiveText}
 }
 
 /**
- * 组装注入文本：预算感知（超 maxChars 先裁冒险记录最旧条目，固定记忆最后裁）。
+ * 组装注入文本：预算感知的**分级裁剪**——先丢最旧的冒险记录，再丢最近详细区，
+ * 再丢卷轴归档，最后才截断固定记忆（带截断标记）。注入格式独立于文件格式。
  *
  * @returns `{ text, totalRoll, dropped }`
  */
 export function composeMemory(file = DEFAULT_MEMORY_FILE, options = {}) {
   const maxChars = typeof options.maxChars === 'number' ? options.maxChars : MEMORY_MAX_CHARS;
   const turnLimit = typeof options.turnLimit === 'number' ? options.turnLimit : DEFAULT_TURN_LIMIT;
+  const detailLimit = typeof options.detailLimit === 'number' ? options.detailLimit : DEFAULT_DETAIL_LIMIT;
   let parsed;
   try {
     parsed = parseMemory(readFileSync(memoryPath(file), 'utf8'));
   } catch {
     return { text: '', totalRoll: 0, dropped: 0 };
   }
-  let roll = parsed.roll.slice(-turnLimit);
-  const dropped = parsed.roll.length - roll.length;
-  let text = renderMemory(file, { ...parsed, roll }, { turnLimit });
-  while (text.length > maxChars && roll.length > 0) {
-    roll = roll.slice(1);
-    text = renderMemory(file, { ...parsed, roll }, { turnLimit });
+
+  const totalRoll = parsed.roll.length;
+  const dropped = Math.max(0, totalRoll - turnLimit);
+  let keptRoll = parsed.roll.slice(-turnLimit);
+  let keptDetail = String(parsed.detail ?? '')
+    .split('\n')
+    .filter((l) => l.trim() !== '')
+    .slice(-detailLimit);
+  let keptFixed = parsed.fixed;
+  let keptArchive = parsed.archive;
+
+  const build = () =>
+    [
+      ZONE_FIXED + '（不自动删除）',
+      '',
+      keptFixed || '（还没记下固定事实）',
+      '',
+      `${ZONE_ROLL}（${keptRoll.length}/${turnLimit} 条${totalRoll > turnLimit ? ` · 共 ${totalRoll} 条，更早的已滚出` : ''}）`,
+      '',
+      keptRoll.map((r) => r.text).join('\n'),
+      '',
+      `${ZONE_DETAIL}（最近 ${keptDetail.length} 轮）`,
+      '',
+      keptDetail.join('\n'),
+      '',
+      ZONE_ARCHIVE,
+      '',
+      keptArchive.join('\n'),
+    ]
+      .join('\n')
+      .trim();
+
+  let text = build();
+  // 超长分级裁剪：冒险记录 → 详细区 → 归档 → 固定记忆截断
+  while (keptRoll.length > 0 && text.length > maxChars) {
+    keptRoll = keptRoll.slice(1);
+    text = build();
   }
-  return { text, totalRoll: parsed.roll.length, dropped };
+  while (keptDetail.length > 0 && text.length > maxChars) {
+    keptDetail = keptDetail.slice(1);
+    text = build();
+  }
+  if (text.length > maxChars) {
+    keptArchive = [];
+    keptFixed = `${keptFixed.slice(0, Math.max(0, maxChars - 320))}\n…（固定记忆太长，已截断）`;
+    text = build();
+  }
+  return { text, totalRoll, dropped };
 }
 
 /** 确保记忆文件存在，返回路径。 */
