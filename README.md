@@ -50,6 +50,24 @@ dsh plugin --profile <你的profile> add /path/to/dsh-noisy-Tang
 
 启动后在 Agent 预设界面（Web UI）或预设选择器里选择对应预设即可。
 
+### 部署到 QQ bot（无头）
+
+**预设注册表（`agentPresets` 服务）由 web-app 表面提供**，`dsh-base` 模板 profile（如裸 qqbot profile）不带它，预设行会停在 pending。因此 QQ 部署的正确形态是 **web-app 基底的 profile**（Web 只监听 127.0.0.1，不对外暴露，QQ 交互不受影响）：
+
+```sh
+# 1. 从 web 模板建 profile（会立即启动，Ctrl-C 退出即可）
+dsh --profile tangbot --from-default-profile web
+
+# 2. 装插件
+dsh plugin --profile tangbot add @tencent-connect/dsh-qqbot   # QQ 通道
+dsh plugin --profile tangbot add /path/to/dsh-noisy-Tang      # 本预设
+
+# 3. 常驻运行（web-app 基底 profile 不带位置参数）
+dsh --profile tangbot --no-open
+```
+
+默认预设可在 Web UI 的预设选择器里切换；或经 `cordis.patch.yml` 把 `agent-preset-registry` 行的 `default` 改为 `堂吉诃德Agent预设·热血档`。
+
 ## 开发
 
 ```sh
