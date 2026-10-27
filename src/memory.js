@@ -136,7 +136,14 @@ ${ZONE_ARCHIVE}
 `;
 }
 
-/** 把原文按四个区拆开（区标题单独一行匹配）。 */
+/**
+ * 把原文按四个区拆开（区标题单独一行匹配）。
+ *
+ * 两个防污染规则（修「头部重复堆积」bug 的回归点）：
+ *   1. 第一个区标题之前的行是文件横幅（标题+引言），由 renderMemory 统一重建，
+ *      解析时一律丢弃——否则旧头部会混进 fixed，每写一次就再渲染一份。
+ *   2. fixed 内容里若混入横幅行（历史损坏文件自愈），同样剔除。
+ */
 export function parseMemory(raw) {
   const lines = String(raw ?? '').split(/\r?\n/);
   const zones = { fixed: [], roll: [], detail: [], archive: [] };
@@ -146,12 +153,20 @@ export function parseMemory(raw) {
     [ZONE_DETAIL, 'detail'],
     [ZONE_ARCHIVE, 'archive'],
   ];
-  let current = zones.fixed;
+  let current = null; // 未遇到第一个区标题前 = 横幅区，丢弃
   for (const line of lines) {
     const hit = heads.find(([head]) => line.trim().startsWith(head));
-    if (hit) current = zones[hit[1]];
-    else current.push(line);
+    if (hit) {
+      current = zones[hit[1]];
+      continue;
+    }
+    if (current) current.push(line);
   }
+  // 自愈：剔除混进固定记忆的横幅行（历史 bug 产生的重复头部）
+  const fixedLines = zones.fixed.filter((l) => {
+    const t = l.trim();
+    return !t.startsWith('# 堂吉诃德的冒险手记') && !t.startsWith('> 吾之长期手记');
+  });
   const roll = zones.roll
     .map((line) => {
       const m = /^-\s*A(\d+)\s+\[/.exec(line.trim());
@@ -161,7 +176,7 @@ export function parseMemory(raw) {
   const detail = zones.detail.filter((l) => l.trim() !== '').join('\n');
   const archive = zones.archive.filter((l) => l.trim() !== '');
   return {
-    fixed: zones.fixed.join('\n').trim(),
+    fixed: fixedLines.join('\n').trim(),
     roll,
     detail,
     archive,

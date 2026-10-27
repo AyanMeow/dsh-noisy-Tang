@@ -40,6 +40,29 @@ try {
   if ((await mem.nextTurnId()) === 'A0003') ok('编号递增 A0001→A0003');
   else bad('编号递增错误');
 
+  // 3.5 回归：头部不得随写入堆积（真机翻过车的 bug）
+  {
+    const raw = readFileSync(p, 'utf8');
+    const headers = (raw.match(/^# 堂吉诃德的冒险手记/gm) || []).length;
+    if (headers === 1) ok(`头部唯一（写入 ${2} 次后仍为 ${headers} 份）`);
+    else bad(`头部重复堆积：${headers} 份`);
+    // 幂等：parse(render(parse(x))) === parse(x)
+    const p1 = mem.parseMemory(raw);
+    const p2 = mem.parseMemory(mem.renderMemory(undefined, p1));
+    const same =
+      p1.fixed === p2.fixed &&
+      p1.roll.length === p2.roll.length &&
+      p1.detail === p2.detail &&
+      p1.archive.length === p2.archive.length;
+    if (same) ok('parse/render 幂等（重组不再增殖内容）');
+    else bad('parse/render 不幂等：每写一次都会增殖');
+    // 自愈：旧损坏文件（头部混入 fixed）解析后被剔除
+    const corrupted = `# 堂吉诃德的冒险手记 · tang-journal.md\n\n> 吾之长期手记。\n\n${mem.ZONE_FIXED}\n\n## 委托目标\n\n# 堂吉诃德的冒险手记 · tang-journal.md\n\n> 吾之长期手记。\n\n## 委托目标\n\n${mem.ZONE_ROLL}\n\n- A0001 [t] 摘要：x\n`;
+    const healed = mem.parseMemory(corrupted);
+    if (!healed.fixed.includes('堂吉诃德的冒险手记')) ok('损坏文件自愈：混入 fixed 的横幅被剔除');
+    else bad('自愈失败：fixed 仍含横幅');
+  }
+
   // 4. FIFO + 归档：上限 3 条（appendRolling 必须显式带 turnLimit，与 apply 的 execute 一致）
   mem.pruneMemoryFile(undefined, 3);
   mem.appendRolling(undefined, '第三条', { turnLimit: 3 });
