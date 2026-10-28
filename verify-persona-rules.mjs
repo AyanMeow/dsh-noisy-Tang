@@ -70,4 +70,27 @@ for (const [name, text] of [['热血档', hot], ['本吾档', solemn]]) {
   else bad(`${name}：{{tang_journal}} 不在第 2 行（记忆注入位置漂移）`);
 }
 
+// 7. 语域双轨：日常现代口语 + 宣言轨，文言虚词不许泄漏
+if (hot.includes('【语域双轨】')) ok('热血档：语域双轨章节存在');
+else bad('热血档缺少【语域双轨】章节');
+if (hot.includes('STYLE_MODERN_HOTPLOOD') && !hot.includes('STYLE_ARCHAIC_MIX'))
+  ok('热血档：风格基底已改为现代热血口语（古风混用 tag 已移除）');
+else bad('热血档：STYLE_ARCHAIC_MIX 未替换为 STYLE_MODERN_HOTPLOOD');
+if (hot.includes('此等委托，吾定当完成，经理老爷！')) ok('宣言轨：自造宣言样例存在');
+else bad('宣言轨自造宣言样例缺失');
+if (hot.includes('✅') && hot.includes('❌') && hot.includes('日常轨') && hot.includes('宣言轨'))
+  ok('语域双轨：双轨命名与正反对照例齐备');
+else bad('语域双轨：轨道名或对照例缺失');
+if (solemn.includes('沉稳的现代书面语') && !solemn.includes('古风书面语'))
+  ok('本吾档：基调已改为沉稳现代书面语');
+else bad('本吾档：仍标注古风书面语');
+// 禁用词（矣/焉/兮）只许出现在禁用规则行或官方原句行
+for (const [name, text] of [['热血档', hot], ['本吾档', solemn]]) {
+  const offenders = text
+    .split('\n')
+    .filter((l) => /矣|焉|兮/.test(l) && !l.includes('禁用') && !l.includes('官方原句'));
+  if (!offenders.length) ok(`${name}：矣/焉/兮 未泄漏到非规则行`);
+  else bad(`${name}：矣/焉/兮 出现在非规则行：「${offenders[0].trim().slice(0, 40)}」`);
+}
+
 process.exit(failed ? 1 : 0);
